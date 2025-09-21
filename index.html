@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Make a File — Paste Content → Download</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:0}
+    body{padding:18px;background:#0f172a;color:#e6eef8}
+    .card{max-width:900px;margin:0 auto;background:linear-gradient(180deg,#0b1220 0%, #071028 100%);padding:18px;border-radius:12px;box-shadow:0 6px 30px rgba(2,6,23,.6)}
+    h1{margin:0 0 8px;font-size:20px}
+    p.lead{margin:0 0 14px;color:#9fb0d6}
+    label{display:block;font-size:13px;margin:10px 0 6px}
+    input[type="text"], textarea, select {width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);color:inherit;box-sizing:border-box}
+    textarea{min-height:260px;resize:vertical;font-family:monospace;font-size:13px;line-height:1.4}
+    .row{display:grid;grid-template-columns:1fr 160px;gap:10px;align-items:end}
+    .controls{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+    button{padding:10px 14px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
+    .btn-primary{background:#2b9bf4;color:white}
+    .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.06);color:#cfe6ff}
+    .info{font-size:13px;color:#bcd7ff;margin-top:10px;min-height:20px}
+    .small{font-size:12px;color:#9fb0d6}
+    .flex{display:flex;gap:8px;align-items:center}
+    footer{margin-top:16px;font-size:12px;color:#92aedd}
+    .badge{background:rgba(255,255,255,.04);padding:6px 8px;border-radius:8px;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="card" role="main">
+    <h1>Paste → File generator</h1>
+    <p class="lead">Type an extension or filename, paste the content, select encoding, then Download.</p>
+
+    <label for="filename">Filename (leave empty to build from name + extension)</label>
+    <div class="row">
+      <div>
+        <input id="nameInput" type="text" placeholder="base-name (e.g. mygame or leave blank)" />
+      </div>
+      <div>
+        <input id="extInput" type="text" placeholder=".sb3 or .js or .exe" />
+      </div>
+    </div>
+
+    <label for="content">File content (paste here)</label>
+    <textarea id="content" placeholder="Paste raw text or base64-encoded binary here..."></textarea>
+
+    <div class="flex" style="margin-top:8px;">
+      <label style="display:flex;gap:8px;align-items:center">
+        <input id="isBase64" type="checkbox" /> <span class="small">Content is base64 (for binary files)</span>
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;margin-left:18px">
+        <input id="autoName" type="checkbox" checked /> <span class="small">Auto-generate filename when blank</span>
+      </label>
+    </div>
+
+    <div class="controls">
+      <button id="downloadBtn" class="btn-primary">Download</button>
+      <button id="previewBtn" class="btn-ghost">Preview / Validate</button>
+      <button id="clearBtn" class="btn-ghost">Clear</button>
+      <div style="margin-left:auto" class="badge" id="sizeBadge">Size: 0 bytes</div>
+    </div>
+
+    <div class="info" id="infoArea">Ready.</div>
+
+    <footer>Tips: For `.exe` / `.sb3` paste base64. For `.js` / `.txt` paste raw text. If you paste binary text accidentally, use base64 option.</footer>
+  </div>
+
+  <script>
+    const nameInput = document.getElementById('nameInput');
+    const extInput = document.getElementById('extInput');
+    const contentEl = document.getElementById('content');
+    const isBase64 = document.getElementById('isBase64');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const previewBtn = document.getElementById('previewBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const infoArea = document.getElementById('infoArea');
+    const sizeBadge = document.getElementById('sizeBadge');
+    const autoName = document.getElementById('autoName');
+
+    function normalizeExt(e) {
+      if (!e) return '';
+      e = e.trim();
+      if (!e) return '';
+      if (e.includes('/') || e.includes('\\')) return e;
+      return e.startsWith('.') ? e : '.' + e;
+    }
+
+    function buildFilename() {
+      const rawName = nameInput.value.trim();
+      const rawExt = extInput.value.trim();
+      const normalized = normalizeExt(rawExt);
+      if (rawName) {
+        if (rawName.includes('.') && !normalized) return rawName;
+        return rawName + (normalized || '');
+      } else {
+        if (!normalized) {
+          const fallback = 'file-' + Date.now();
+          return fallback;
+        }
+        if (autoName.checked) {
+          return 'file-' + Date.now() + normalized;
+        }
+        return 'file' + normalized;
+      }
+    }
+
+    function estimateSizeFromBase64(b64) {
+      const len = b64.replace(/\s+/g, '').length;
+      if (len === 0) return 0;
+      const padding = (b64.endsWith('==') ? 2 : (b64.endsWith('=') ? 1 : 0));
+      return Math.max(0, Math.round(len * 3 / 4) - padding);
+    }
+
+    function updateSizeBadge() {
+      const txt = contentEl.value || '';
+      let size = 0;
+      if (isBase64.checked) {
+        size = estimateSizeFromBase64(txt);
+      } else {
+        size = new TextEncoder().encode(txt).length;
+      }
+      sizeBadge.textContent = 'Size: ' + size.toLocaleString() + ' bytes';
+      return size;
+    }
+
+    contentEl.addEventListener('input', updateSizeBadge);
+    isBase64.addEventListener('change', updateSizeBadge);
+
+    previewBtn.addEventListener('click', () => {
+      const fn = buildFilename();
+      const enc = isBase64.checked ? 'base64' : 'text';
+      const size = updateSizeBadge();
+      infoArea.textContent = `Filename: ${fn} · Encoding: ${enc} · Estimated size: ${size} bytes`;
+      if (isBase64.checked) {
+        const b = contentEl.value.trim();
+        if (!b) {
+          infoArea.textContent += ' · Warning: content empty';
+          return;
+        }
+        const invalid = /[^A-Za-z0-9+/=\s]/.test(b);
+        if (invalid) infoArea.textContent += ' · Warning: content contains non-base64 characters';
+        else infoArea.textContent += ' · Base64 looks OK';
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      contentEl.value = '';
+      updateSizeBadge();
+      infoArea.textContent = 'Cleared.';
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      const raw = contentEl.value;
+      if (!raw) {
+        infoArea.textContent = 'Paste some content first.';
+        return;
+      }
+
+      const filename = buildFilename();
+      infoArea.textContent = 'Downloading...'; // show immediately
+
+      try {
+        let blob;
+        if (isBase64.checked) {
+          const cleaned = raw.replace(/\s+/g, '');
+          const bad = /[^A-Za-z0-9+/=]/.test(cleaned);
+          if (bad) {
+            infoArea.textContent = 'Error: base64 contains invalid characters.';
+            return;
+          }
+          const byteChars = atob(cleaned);
+          const byteNumbers = new Uint8Array(byteChars.length);
+          for (let i = 0; i < byteChars.length; i++) {
+            byteNumbers[i] = byteChars.charCodeAt(i);
+          }
+          blob = new Blob([byteNumbers.buffer], { type: 'application/octet-stream' });
+        } else {
+          blob = new Blob([raw], { type: 'text/plain;charset=utf-8' });
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+        // update after short delay
+        setTimeout(() => {
+          infoArea.textContent = `Download started: ${filename} (${Math.round(blob.size).toLocaleString()} bytes)`;
+        }, 300);
+      } catch (err) {
+        console.error(err);
+        infoArea.textContent = 'Error creating file: ' + (err?.message || String(err));
+      }
+    });
+
+    updateSizeBadge();
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        downloadBtn.click();
+      }
+    });
+  </script>
+</body>
+</html>
